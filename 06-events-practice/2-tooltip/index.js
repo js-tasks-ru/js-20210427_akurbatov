@@ -30,8 +30,9 @@ class Tooltip {
     }
 
     move(x = 0, y = 0) {
-        this.element.style.left = x + 5 + "px";
-        this.element.style.top = y + 5 + "px";
+        const shift = 5;
+        this.element.style.left = x + shift + "px";
+        this.element.style.top = y + shift + "px";
     }
 
     hide() {
