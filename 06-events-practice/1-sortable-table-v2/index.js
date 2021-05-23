@@ -116,8 +116,8 @@ export default class SortableTable {
         }
     }
 
-    headerClick(event) {
-        let div = event.target.closest(".sortable-table__cell");
+    headerClick = event => {
+        const div = event.target.closest(".sortable-table__cell");
         if (!div || !div.dataset.sortable) return;
         this.fieldValue = div.dataset.id;
         this.orderValue = this.orderValue === "asc" ? "desc" : "asc";
@@ -127,15 +127,15 @@ export default class SortableTable {
 }
 
     initEventListeners () {
-        this.subElements.header.addEventListener("pointerdown", this.headerClick.bind(this));
+        this.subElements.header.addEventListener("pointerdown", this.headerClick);
     }
+
     remove() {
         this.element?.remove();
     }
 
     destroy() {
         this.remove();
-        this.subElements?.header?.removeEventListener("pointerdown", this.headerClick.bind(this));
         this.element = null;
         this.subElements = {};
     }
