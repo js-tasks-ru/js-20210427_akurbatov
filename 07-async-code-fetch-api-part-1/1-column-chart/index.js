@@ -70,16 +70,18 @@ export default class ColumnChart {
         this.subElements.header.innerHTML = dataValues.reduce((sum, item) => { sum += item; return sum;}, 0);
     }
 
-    async update(from, to) {
-        this.element.classList.add("column-chart_loading");
+    async getData(from, to) {
         let url = new URL(this.params.url, BACKEND_URL);
         url.searchParams.append("from", from.toJSON());
         url.searchParams.append("to", to.toJSON());
-        const data = await fetchJson(url)
-                        .then(data => data)
-                        .catch(() => {});
-       this.refresh(data);
-       return data;
+        return await fetchJson(url);
+    }
+
+    async update(from, to) {
+        this.element.classList.add("column-chart_loading");        
+        const data = await this.getData(from, to);
+        this.refresh(data);
+        return data;
     }
 
     remove () {
