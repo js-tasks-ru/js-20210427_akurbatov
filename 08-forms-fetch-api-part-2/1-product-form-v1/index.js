@@ -7,6 +7,16 @@ const BACKEND_URL = 'https://course-js.javascript.ru';
 export default class ProductForm {
     element = null;
     subElements = {};
+    defaultFormData = {
+        title: "",
+        description: "",
+        images: {},
+        quantity: 1,
+        subcategory: "",
+        status: 1,
+        price: 100,
+        discount: 0
+      };
 
     constructor (productId) {
         this.productId = productId;
@@ -16,11 +26,11 @@ export default class ProductForm {
         this.product = {};
     }
 
-    templateItemImage(image) {
+    getItemImage(image) {
         return `
             <li class="products-edit__imagelist-item sortable-list__item" style="">
-                <input type="hidden" name="url" value="${image.url}">
-                <input type="hidden" name="source" value="${image.source}">
+                <input data-element="url" type="hidden" name="url" value="${image.url}">
+                <input data-element="source" type="hidden" name="source" value="${image.source}">
                 <span>
                     <img src="icon-grab.svg" data-grab-handle="" alt="grab">
                     <img class="sortable-table__cell-img" alt="Image" src="${image.url}">
@@ -94,68 +104,94 @@ export default class ProductForm {
         `;
     }
 
-    async getProduct(id) {
-        let url = new URL(this.urlProduct, BACKEND_URL);
+    getProduct(id) {
+        const url = new URL(this.urlProduct, BACKEND_URL);
         url.searchParams.append("id", id);
-        return await fetchJson(url);
+        return fetchJson(url);
     }
 
-    async getCategories() {
-        let url = new URL(this.urlCategories, BACKEND_URL);
+    getCategories() {
+        const url = new URL(this.urlCategories, BACKEND_URL);
         url.searchParams.append("_sort", "weight");
         url.searchParams.append("_refs", "subcategory");
-        return await fetchJson(url);
+        return fetchJson(url);
     }
 
     async render () {
-        this.categories = await this.getCategories();
-        this.product = await this.getProduct(this.productId);
-        if (this.product.length)
-            this.product = this.product[0];
-        else
-            this.product = {};
+        const promiseCategories = this.getCategories();
+        const promiseProduct = this.productId ? this.getProduct(this.productId) : [this.defaultFormData];
+        const [categories, productResponce] = await Promise.all([promiseCategories, promiseProduct]);
+        this.categories = categories;
+        [this.product] = productResponce;
 
         const element = document.createElement("div");
         element.innerHTML = this.template;
         this.element = element.firstElementChild;
         this.subElements = this.getSubElements(this.element);
         
+        if (this.product) {
+            this.setFormData(this.product);
+            this.initEventListeners();
+        }
+
+        return this.element;
+    }
+
+    setFormData(product) {
         this.categories.forEach(category => {
             category.subcategories.forEach(subcategory => {
-                const isSelected = this.product.subcategory === subcategory.id;
-                let option = new Option(`${category.title} > ${subcategory.title}`, subcategory.id, isSelected, isSelected);
+                const isSelected = product.subcategory === subcategory.id;
+                const option = new Option(`${category.title} > ${subcategory.title}`, subcategory.id, isSelected, isSelected);
                 this.subElements.productForm.elements.subcategory.append(option);
             });
         });
 
         const listImages = this.subElements.productForm.querySelector(".sortable-list");
         listImages.innerHTML = "";
-        this.product.images.forEach(image => {
-            listImages.innerHTML += this.templateItemImage(image);
+        product.images.forEach(image => {
+            listImages.innerHTML += this.getItemImage(image);
+        });
+
+        const excludeFields = ["images"];
+        const formFields = Object.keys(this.defaultFormData).filter(key => !excludeFields.includes(key));
+        formFields.forEach(field => {
+            const element = this.subElements.productForm.elements[field];
+            if (element) {
+                element.value = product[field];
+            }
+        });
+    }
+
+    getFormData() {
+        const product = {
+            id: this.productId
+        };
+        const excludeFields = ["images"];
+        const numberFields = ["quantity", "status", "price", "discount"];
+        const formFields = Object.keys(this.defaultFormData).filter(key => !excludeFields.includes(key));
+        formFields.forEach(field => {
+            const element = this.subElements.productForm.elements[field];
+            if (element) {
+                product[field] = numberFields.includes(field) ?
+                    parseInt(element.value):
+                    element.value;
+            }
         });
         
-        this.subElements.productForm.elements.title.value = this.product.title || "";
-        this.subElements.productForm.elements.description.value = this.product.description || "";
-        this.subElements.productForm.elements.price.value = this.product.price || "";
-        this.subElements.productForm.elements.discount.value = this.product.discount || "";
-        this.subElements.productForm.elements.quantity.value = this.product.quantity || "";
-        this.subElements.productForm.elements.status.value = this.product.status;
+        const listImages = [...this.subElements.productForm.querySelectorAll(".sortable-list li")];
+        product.images = listImages.map(image => ({
+            url: image.children.url.value,
+            source: image.children.source.value
+        }));
 
-        this.initEventListeners();
-        return this.element;
+        return product;
     }
 
     initEventListeners () {
-        this.subElements.productForm.elements.uploadImage.addEventListener("click", this.uploadImageClick);
-        this.subElements.productForm.elements.fileInput.addEventListener("change", this.fileInputChange);
-        this.subElements.productForm.elements.title.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.description.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.subcategory.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.price.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.discount.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.quantity.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.status.addEventListener("input", this.inputChange);
-        this.subElements.productForm.elements.save.addEventListener("click", this.btnSaveClick);
+        const {productForm, uploadImage, fileInput} = this.subElements;
+        productForm.addEventListener("submit", this.onSubmit);
+        uploadImage.addEventListener("click", this.uploadImageClick);
+        fileInput.addEventListener("change", this.fileInputChange);
     }
 
     uploadImageClick = () => {
@@ -163,71 +199,67 @@ export default class ProductForm {
     }
 
     fileInputChange = async () => {
-        this.subElements.uploadImage.classList.add("is-loading");
         this.subElements.uploadImage.disabled = true;
-        const file = this.subElements.fileInput.files[0];
-        const fileSend = await this.sendFile(file);
-        if (fileSend) {
-            this.product.images.push(fileSend);
+        this.subElements.uploadImage.classList.add("is-loading");
+        const [file] = this.subElements.fileInput.files;
+        const fileUploaded = await this.uploadFile(file);
+        if (fileUploaded) {
             const listImages = this.subElements.productForm.querySelector(".sortable-list");
-            listImages.innerHTML += this.templateItemImage(fileSend);
+            listImages.innerHTML += this.getItemImage({source: file.name, url: fileUploaded.link});
         }
         this.subElements.uploadImage.classList.remove("is-loading");
         this.subElements.uploadImage.disabled = false;
     }
 
-    async sendFile(file) {
-        let formData = new FormData();
+    async uploadFile(file) {
+        const formData = new FormData();
         formData.append("image", file);
         
-        let url = new URL("3/image", "https://api.imgur.com");
-        let response;
         try {
-            response = await fetchJson(url, {
+            const response = await fetchJson("https://api.imgur.com/3/image", {
                 method: "POST",
                 headers: {
                     'Authorization': `Client-ID ${IMGUR_CLIENT_ID}`
                 },
                 body: formData
             });
+
+            return response.data;
         }
-        catch {}
-        return response !== undefined ? {source: file.name, url: response.data.link} : null;
+        catch (error) {
+            throw error;
+        }
     }
 
-    inputChange = (event) => {
-        const name = event.target.name;
-        const value = escapeHtml(event.target.value);
-        this.product[name] = value;
-    }
-
-    btnSaveClick = async event => {
+    onSubmit = (event) => {
         event.preventDefault();
 
-        await this.save();
+        this.save();
     }
 
-    save = async () => {
-        let url = new URL(this.urlProduct, BACKEND_URL);
+    async save() {
+        const product = this.getFormData();
+        const url = new URL(this.urlProduct, BACKEND_URL);
         const method = this.productId ? "PATCH" : "PUT";
-        const result = {};
         try {        
-            this.product = await fetchJson(url, {
+            const result = fetchJson(url, {
                 method: method,
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify(this.product)
+                body: JSON.stringify(product)
             });
-            result.status = "ok";
+
+            const event = this.productId ?
+                new CustomEvent("product-updated", {
+                    detail: result.id
+                }) :
+                new CustomEvent("product-saved");
+            this.element.dispatchEvent(event);
         }
-        catch {
-            result.status = "error";
+        catch (error) {
+            throw error;
         }
-        this.element.dispatchEvent(new CustomEvent("product-updated", {
-            detail: result, 
-            bubbles: true
-        }));
     }
 
     getSubElements(element) {
